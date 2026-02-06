@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 app = Flask(__name__)
 
 # Database setup - PostgreSQL on Railway, SQLite for local dev
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# Try DATABASE_URL first, then DATABASE_PUBLIC_URL
+DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL')
 
 if DATABASE_URL:
     # PostgreSQL (Railway)
