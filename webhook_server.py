@@ -303,8 +303,10 @@ def index():
     </ul>
     """
 
+# Inicializar DB siempre (para gunicorn y ejecución directa)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     print("🎯 Bloop Tracker v2 - Con tracking de P&L")
     print("📡 Webhook: http://localhost:5555/webhook")
     print("📊 Stats: http://localhost:5555/stats")
