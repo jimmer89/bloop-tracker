@@ -70,15 +70,39 @@ O para el Bloop:
 ### Tabla `open_position`
 - direction, entry_time, entry_price, symbol
 
-## 🔮 Roadmap - Análisis Avanzado
+## 🔮 Roadmap
 
-Para habilitar optimización futura (ATR SL/TP, etc.), planificamos añadir:
-
+### Fase 1: Análisis Avanzado (datos)
 - [ ] Capturar high/low de la vela de entrada
 - [ ] Capturar ATR en el momento de la señal
 - [ ] Capturar TP1/TP2 levels del indicador
 - [ ] Tracking de max favorable/adverse excursion (MFE/MAE)
 - [ ] Múltiples estrategias de salida en paralelo
+
+### Fase 2: Auto-Ejecución en MT5 ⏳ PENDIENTE
+**Prerrequisito:** Backtesting demuestra rentabilidad
+
+**Implementación propuesta:**
+```
+EA (WebRequest) → Railway /position → Compara → Ejecuta
+```
+
+**Componentes:**
+- `BloopSignalExecutor.mq5` - EA que consulta Railway cada 5-10 seg
+- Parsea JSON de `/position`
+- Si señal ≠ posición actual → cierra y abre nueva
+- Panel visual con estado de conexión
+- Log de operaciones
+
+**Configuración requerida:**
+- MT5: Añadir URL a lista permitida (`Herramientas → Opciones → Expert Advisors`)
+- Railway URL: `https://web-production-62bc.up.railway.app`
+
+**Delay esperado:** 5-10 segundos (aceptable para señales M1+)
+
+**Tiempo estimado de desarrollo:** 2-3 horas
+
+**Estado:** 🔴 No iniciado - esperando validación de rentabilidad
 
 ## 🛠️ Stack
 
