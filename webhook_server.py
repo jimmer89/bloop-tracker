@@ -149,7 +149,9 @@ def init_db():
         for table, col, dtype in migration_columns:
             try:
                 c.execute(f'ALTER TABLE {table} ADD COLUMN {col} {dtype}')
-            except:
+                conn.commit()
+            except Exception as e:
+                conn.rollback()  # Rollback para evitar transacción abortada
                 pass  # Column already exists
     else:
         # SQLite syntax
