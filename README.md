@@ -1,44 +1,84 @@
-# 🎯 Bloop Tracker
+# 🎯 Bloop Tracker v5
 
-Webhook server para capturar señales del **Bloop Indicator** (TradingView) y calcular P&L automáticamente.
+Webhook server para capturar señales del **Bloop Indicator** (TradingView) y calcular P&L con **spread real** de IC Markets.
 
-## 🚀 Setup
+## 🚀 Estado Actual
 
-**Producción (Railway):**
-- URL: `https://web-production-62bc.up.railway.app`
-- Database: PostgreSQL (persistente)
-- Auto-deploy desde GitHub
+**Producción (Railway):** https://web-production-62bc.up.railway.app
 
-**Local:**
-```bash
-cd bloop-tracker
-source venv/bin/activate
-python webhook_server.py
-```
+### Backtest Results (2026-02-10)
+
+| Métrica | Bruto | Neto (con spread) |
+|---------|-------|-------------------|
+| Total P&L | +148.1 pts | **-2551.9 pts** |
+| Win Rate | 50% | **10%** |
+| Winners | 15/30 | 3/30 |
+| P&L promedio | +4.9 pts | -85.1 pts |
+
+**⚠️ Conclusión:** La estrategia NO es viable con el spread actual de IC Markets (90 pts).
+
+---
+
+## 📊 Configuración de Spread
+
+Basado en monitoreo real con `SpreadMonitor_USTEC.mq5` (22 horas de datos):
+
+| Parámetro | Valor |
+|-----------|-------|
+| Spread mínimo | 90 pts (0.90 USD) |
+| Spread promedio | 97 pts |
+| Spread máximo | 220 pts (picos) |
+| Mejor horario | 17:00-22:00 GMT+1 |
+
+**Fuente:** IC Markets, cuenta Standard, USTEC
+
+---
 
 ## 📡 Endpoints
 
 | Endpoint | Método | Descripción |
 |----------|--------|-------------|
 | `/webhook` | POST | Recibe señales de TradingView |
-| `/stats` | GET | Estadísticas completas |
-| `/trades` | GET | Historial de trades cerrados |
+| `/stats` | GET | Estadísticas (bruto vs neto) |
+| `/trades` | GET | Historial de trades con P&L neto |
 | `/signals` | GET | Señales raw |
 | `/position` | GET | Posición abierta actual |
+| `/spread` | GET/POST | Ver/actualizar config de spread |
+| `/recalculate` | POST | Recalcular P&L neto histórico |
 | `/reset` | POST | Resetear todos los datos |
-| `/health` | GET | Health check |
+| `/health` | GET | Health check + versión |
 
-## 📊 Lógica de Trading
+---
 
-1. Llega señal **LONG** → Abre posición LONG
-2. Llega señal **SHORT** → Cierra LONG (calcula P&L) → Abre SHORT
-3. Llega señal **LONG** → Cierra SHORT (calcula P&L) → Abre LONG
-4. ...y así sucesivamente
+## 📈 Respuesta de /stats
 
-**Cada trade se guarda con:**
-- Entry/exit time y price
-- P&L en puntos y porcentaje
-- Duración en segundos
+```json
+{
+  "trades": {
+    "total": 30,
+    "gross": {
+      "total_pnl": 148.1,
+      "win_rate": 50.0,
+      "winners": 15,
+      "avg_pnl": 4.94
+    },
+    "net": {
+      "total_pnl": -2551.9,
+      "win_rate": 10.0,
+      "winners": 3,
+      "avg_pnl": -85.06,
+      "total_spread_cost": 2700.0
+    }
+  },
+  "spread_config": {
+    "symbol": "USTEC",
+    "spread_points": 90,
+    "source": "SpreadMonitor_USTEC.mq5 - IC Markets"
+  }
+}
+```
+
+---
 
 ## 🔧 TradingView Alert Setup
 
@@ -47,72 +87,98 @@ python webhook_server.py
 https://web-production-62bc.up.railway.app/webhook
 ```
 
-**Alert Message (JSON):**
+**Alert Message:**
 ```json
-{"signal": "{{strategy.order.action}}", "price": {{close}}, "symbol": "{{ticker}}", "timeframe": "{{interval}}"}
+{"signal": "LONG", "price": {{close}}, "symbol": "USTEC"}
+{"signal": "SHORT", "price": {{close}}, "symbol": "USTEC"}
 ```
 
-O para el Bloop:
+**Con datos de optimización (opcional):**
 ```json
-{"signal": "LONG", "price": {{close}}}
-{"signal": "SHORT", "price": {{close}}}
+{
+  "signal": "LONG",
+  "price": {{close}},
+  "symbol": "USTEC",
+  "atr": {{plot("ATR")}},
+  "tp1": {{plot("TP1")}},
+  "tp2": {{plot("TP2")}},
+  "sl": {{plot("SL")}}
+}
 ```
 
-## 📈 Datos Capturados
+---
 
-### Tabla `signals`
-- timestamp, signal, price, symbol, timeframe, raw_payload
+## 🔄 Actualizar Spread
 
-### Tabla `trades`
-- symbol, direction, entry_time, entry_price, exit_time, exit_price
-- pnl_points, pnl_percent, duration_seconds
+```bash
+# Ver configuración actual
+curl https://web-production-62bc.up.railway.app/spread
 
-### Tabla `open_position`
-- direction, entry_time, entry_price, symbol
+# Actualizar spread (ej: nuevo spread de 50 pts)
+curl -X POST https://web-production-62bc.up.railway.app/spread \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "USTEC", "spread_points": 50}'
+
+# Recalcular todos los trades con nuevo spread
+curl -X POST https://web-production-62bc.up.railway.app/recalculate
+```
+
+---
+
+## 📁 Archivos Relacionados
+
+| Archivo | Ubicación | Descripción |
+|---------|-----------|-------------|
+| SpreadMonitor EA | `~/clawd/mql5/SpreadMonitor_USTEC.mq5` | EA para monitorear spread |
+| Datos de spread | `~/clawd/edge-research/data/USTEC_spread_2026-02-09_raw.csv` | CSV con 2604 muestras |
+| Análisis spread | `~/clawd/edge-research/analysis/USTEC_spread_analysis_2026-02-10.md` | Análisis completo |
+
+---
 
 ## 🔮 Roadmap
 
-### Fase 1: Análisis Avanzado (datos)
-- [ ] Capturar high/low de la vela de entrada
-- [ ] Capturar ATR en el momento de la señal
-- [ ] Capturar TP1/TP2 levels del indicador
-- [ ] Tracking de max favorable/adverse excursion (MFE/MAE)
-- [ ] Múltiples estrategias de salida en paralelo
+### ✅ Completado
+- [x] Webhook básico con captura de señales
+- [x] Cálculo de P&L por trade
+- [x] Deploy en Railway con PostgreSQL
+- [x] Datos de optimización (ATR, TP, SL)
+- [x] **Spread real de IC Markets integrado**
+- [x] **P&L bruto vs neto**
+- [x] **Endpoint /recalculate para actualizar histórico**
 
-### Fase 2: Auto-Ejecución en MT5 ⏳ PENDIENTE
-**Prerrequisito:** Backtesting demuestra rentabilidad
+### 🔄 En Progreso
+- [ ] Monitoreo de spread en tiempo real (EA corriendo)
+- [ ] Más días de datos para análisis
 
-**Implementación propuesta:**
-```
-EA (WebRequest) → Railway /position → Compara → Ejecuta
-```
+### ⏳ Pendiente
+- [ ] Comparar spreads de otros brokers
+- [ ] Filtros de señales (solo trades con potencial > spread)
+- [ ] Auto-ejecución en MT5 (requiere viabilidad demostrada)
 
-**Componentes:**
-- `BloopSignalExecutor.mq5` - EA que consulta Railway cada 5-10 seg
-- Parsea JSON de `/position`
-- Si señal ≠ posición actual → cierra y abre nueva
-- Panel visual con estado de conexión
-- Log de operaciones
+---
 
-**Configuración requerida:**
-- MT5: Añadir URL a lista permitida (`Herramientas → Opciones → Expert Advisors`)
-- Railway URL: `https://web-production-62bc.up.railway.app`
+## 🎯 Para Hacer Viable la Estrategia
 
-**Delay esperado:** 5-10 segundos (aceptable para señales M1+)
+1. **Cambiar broker** → Spread < 5 pts (Pepperstone Razor, IC Markets Raw)
+2. **Filtrar señales** → Solo trades con potencial > 150 pts
+3. **Aumentar timeframe** → H1/H4 en vez de M1/M5
+4. **Cambiar activo** → Forex majors tienen spread ~0.5 pts
 
-**Tiempo estimado de desarrollo:** 2-3 horas
-
-**Estado:** 🔴 No iniciado - esperando validación de rentabilidad
+---
 
 ## 🛠️ Stack
 
 - **Backend:** Flask + Gunicorn
-- **Database:** PostgreSQL (Railway) / SQLite (local)
-- **Hosting:** Railway (free tier)
-- **Source:** TradingView webhooks
+- **Database:** PostgreSQL (Railway)
+- **Hosting:** Railway (auto-deploy desde GitHub)
+- **Monitoreo spread:** MQL5 EA en MT5
+
+---
 
 ## 📝 Changelog
 
+- **v5** (2026-02-10): Spread real de IC Markets, P&L bruto vs neto, /recalculate
+- **v4** (2026-02-07): Datos de optimización (ATR, TP, SL)
 - **v3** (2026-02-06): Migración a PostgreSQL, deploy en Railway
 - **v2** (2026-02-05): Tracking de P&L, SQLite
 - **v1** (2026-02-05): Webhook básico con Serveo
