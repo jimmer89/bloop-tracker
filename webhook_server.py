@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Bloop Indicator Webhook Server v4
+Bloop Indicator Webhook Server v5
 Captura señales de TradingView y calcula P&L
 Incluye datos para optimización: ATR, TP1, TP2, SL, High, Low
+Incluye coste de spread en cálculos de P&L
 """
 
 from flask import Flask, request, jsonify
@@ -11,6 +12,26 @@ import os
 from datetime import datetime, timezone
 
 app = Flask(__name__)
+
+# ============================================================
+# CONFIGURACIÓN DE SPREAD (IC Markets USTEC)
+# Basado en monitoreo real: 2026-02-09/10 (~22 horas de datos)
+# ============================================================
+SPREAD_CONFIG = {
+    'USTEC': {
+        'spread_points': 90,      # Spread mínimo captado
+        'spread_avg': 97,         # Spread promedio
+        'spread_max': 220,        # Spread máximo (picos de volatilidad)
+        'best_hours': (17, 22),   # Horario con mejor spread (GMT+1)
+        'source': 'SpreadMonitor_USTEC.mq5 - IC Markets',
+        'last_updated': '2026-02-10'
+    }
+}
+
+def get_spread_for_symbol(symbol='USTEC'):
+    """Obtiene el spread configurado para un símbolo."""
+    config = SPREAD_CONFIG.get(symbol, SPREAD_CONFIG.get('USTEC'))
+    return config['spread_points']
 
 # Database setup
 DATABASE_URL = os.environ.get('DATABASE_URL') or os.environ.get('DATABASE_PUBLIC_URL')
@@ -74,6 +95,9 @@ def init_db():
                 exit_reason TEXT,
                 pnl_points REAL,
                 pnl_percent REAL,
+                spread_cost REAL,
+                pnl_net_points REAL,
+                pnl_net_percent REAL,
                 duration_seconds INTEGER,
                 max_price REAL,
                 min_price REAL
@@ -112,6 +136,9 @@ def init_db():
             ('trades', 'exit_reason', 'TEXT'),
             ('trades', 'max_price', 'REAL'),
             ('trades', 'min_price', 'REAL'),
+            ('trades', 'spread_cost', 'REAL'),
+            ('trades', 'pnl_net_points', 'REAL'),
+            ('trades', 'pnl_net_percent', 'REAL'),
             ('open_position', 'atr', 'REAL'),
             ('open_position', 'tp1', 'REAL'),
             ('open_position', 'tp2', 'REAL'),
@@ -161,6 +188,9 @@ def init_db():
                 exit_reason TEXT,
                 pnl_points REAL,
                 pnl_percent REAL,
+                spread_cost REAL,
+                pnl_net_points REAL,
+                pnl_net_percent REAL,
                 duration_seconds INTEGER,
                 max_price REAL,
                 min_price REAL
@@ -240,13 +270,19 @@ def close_position(conn, exit_time, exit_price, exit_reason='signal'):
     if not pos:
         return None
     
-    # Calcular P&L
+    # Calcular P&L bruto
     if pos['direction'] == 'LONG':
         pnl_points = exit_price - pos['entry_price']
     else:
         pnl_points = pos['entry_price'] - exit_price
     
     pnl_percent = (pnl_points / pos['entry_price']) * 100
+    
+    # Calcular spread cost y P&L neto
+    symbol = pos['symbol'] or 'USTEC'
+    spread_cost = get_spread_for_symbol(symbol)
+    pnl_net_points = pnl_points - spread_cost
+    pnl_net_percent = (pnl_net_points / pos['entry_price']) * 100
     
     entry_dt = datetime.fromisoformat(pos['entry_time'])
     exit_dt = datetime.fromisoformat(exit_time)
@@ -259,28 +295,32 @@ def close_position(conn, exit_time, exit_price, exit_reason='signal'):
             INSERT INTO trades (symbol, direction, entry_time, entry_price,
                                entry_atr, entry_tp1, entry_tp2, entry_sl,
                                exit_time, exit_price, exit_reason,
-                               pnl_points, pnl_percent, duration_seconds,
-                               max_price, min_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               pnl_points, pnl_percent, 
+                               spread_cost, pnl_net_points, pnl_net_percent,
+                               duration_seconds, max_price, min_price)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (pos['symbol'], pos['direction'], pos['entry_time'], pos['entry_price'],
               pos['atr'], pos['tp1'], pos['tp2'], pos['sl'],
               exit_time, exit_price, exit_reason,
-              pnl_points, pnl_percent, duration,
-              pos['max_price'], pos['min_price']))
+              pnl_points, pnl_percent,
+              spread_cost, pnl_net_points, pnl_net_percent,
+              duration, pos['max_price'], pos['min_price']))
         c.execute('DELETE FROM open_position WHERE id = 1')
     else:
         c.execute('''
             INSERT INTO trades (symbol, direction, entry_time, entry_price,
                                entry_atr, entry_tp1, entry_tp2, entry_sl,
                                exit_time, exit_price, exit_reason,
-                               pnl_points, pnl_percent, duration_seconds,
-                               max_price, min_price)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               pnl_points, pnl_percent,
+                               spread_cost, pnl_net_points, pnl_net_percent,
+                               duration_seconds, max_price, min_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (pos['symbol'], pos['direction'], pos['entry_time'], pos['entry_price'],
               pos['atr'], pos['tp1'], pos['tp2'], pos['sl'],
               exit_time, exit_price, exit_reason,
-              pnl_points, pnl_percent, duration,
-              pos['max_price'], pos['min_price']))
+              pnl_points, pnl_percent,
+              spread_cost, pnl_net_points, pnl_net_percent,
+              duration, pos['max_price'], pos['min_price']))
         c.execute('DELETE FROM open_position WHERE id = 1')
     
     conn.commit()
@@ -292,6 +332,9 @@ def close_position(conn, exit_time, exit_price, exit_reason='signal'):
         'exit_reason': exit_reason,
         'pnl_points': pnl_points,
         'pnl_percent': pnl_percent,
+        'spread_cost': spread_cost,
+        'pnl_net_points': pnl_net_points,
+        'pnl_net_percent': pnl_net_percent,
         'duration_seconds': duration,
         'max_price': pos['max_price'],
         'min_price': pos['min_price'],
@@ -375,8 +418,8 @@ def webhook():
         print(f"\n{emoji} [{timestamp[:19]}] {signal} @ {price:.2f}{opt_info}")
         
         if closed_trade:
-            pnl_emoji = "✅" if closed_trade['pnl_points'] > 0 else "❌"
-            print(f"   {pnl_emoji} Closed {closed_trade['direction']}: {closed_trade['pnl_points']:+.2f} pts ({closed_trade['pnl_percent']:+.2f}%)")
+            pnl_emoji = "✅" if closed_trade['pnl_net_points'] > 0 else "❌"
+            print(f"   {pnl_emoji} Closed {closed_trade['direction']}: {closed_trade['pnl_points']:+.1f} pts bruto → {closed_trade['pnl_net_points']:+.1f} pts neto (spread: -{closed_trade['spread_cost']:.0f})")
         
         print(f"   📊 Signals: {total_signals} | Trades: {trade_stats[0]} | P&L: {trade_stats[1] or 0:.2f} pts")
         
@@ -422,8 +465,9 @@ def get_trades():
     c.execute('''SELECT id, symbol, direction, entry_time, entry_price,
                         entry_atr, entry_tp1, entry_tp2, entry_sl,
                         exit_time, exit_price, exit_reason,
-                        pnl_points, pnl_percent, duration_seconds,
-                        max_price, min_price
+                        pnl_points, pnl_percent, 
+                        spread_cost, pnl_net_points, pnl_net_percent,
+                        duration_seconds, max_price, min_price
                  FROM trades ORDER BY exit_time DESC LIMIT 100''')
     rows = c.fetchall()
     conn.close()
@@ -433,8 +477,9 @@ def get_trades():
         'entry_time': r[3], 'entry_price': r[4],
         'entry_atr': r[5], 'entry_tp1': r[6], 'entry_tp2': r[7], 'entry_sl': r[8],
         'exit_time': r[9], 'exit_price': r[10], 'exit_reason': r[11],
-        'pnl_points': r[12], 'pnl_percent': r[13], 'duration_seconds': r[14],
-        'max_price': r[15], 'min_price': r[16]
+        'pnl_points': r[12], 'pnl_percent': r[13],
+        'spread_cost': r[14], 'pnl_net_points': r[15], 'pnl_net_percent': r[16],
+        'duration_seconds': r[17], 'max_price': r[18], 'min_price': r[19]
     } for r in rows])
 
 
@@ -450,6 +495,7 @@ def get_stats():
     c.execute("SELECT COUNT(*) FROM signals WHERE signal = 'SHORT'")
     shorts = c.fetchone()[0]
     
+    # Stats con P&L bruto
     c.execute('''
         SELECT COUNT(*), 
                COALESCE(SUM(pnl_points), 0), 
@@ -461,21 +507,64 @@ def get_stats():
     ''')
     t = c.fetchone()
     
+    # Stats con P&L neto (después de spread)
+    c.execute('''
+        SELECT COALESCE(SUM(pnl_net_points), 0),
+               COALESCE(AVG(pnl_net_points), 0),
+               COALESCE(SUM(CASE WHEN pnl_net_points > 0 THEN 1 ELSE 0 END), 0),
+               COALESCE(MAX(pnl_net_points), 0),
+               COALESCE(MIN(pnl_net_points), 0),
+               COALESCE(SUM(spread_cost), 0)
+        FROM trades
+    ''')
+    net = c.fetchone()
+    
     pos = get_open_position(conn)
     conn.close()
     
-    win_rate = (t[3] / t[0] * 100) if t[0] and t[0] > 0 else 0
+    total_trades = t[0] or 0
+    win_rate_gross = (t[3] / total_trades * 100) if total_trades > 0 else 0
+    win_rate_net = (net[2] / total_trades * 100) if total_trades > 0 else 0
+    
+    # Spread config para mostrar
+    spread_info = SPREAD_CONFIG.get('USTEC', {})
     
     return jsonify({
         'signals': {'total': total_signals, 'longs': longs, 'shorts': shorts},
         'trades': {
-            'total': t[0] or 0,
+            'total': total_trades,
+            # P&L Bruto (sin spread)
+            'gross': {
+                'total_pnl': round(float(t[1] or 0), 2),
+                'avg_pnl': round(float(t[2] or 0), 2),
+                'winners': int(t[3] or 0),
+                'win_rate': round(win_rate_gross, 1),
+                'best_trade': round(float(t[4] or 0), 2),
+                'worst_trade': round(float(t[5] or 0), 2)
+            },
+            # P&L Neto (con spread)
+            'net': {
+                'total_pnl': round(float(net[0] or 0), 2),
+                'avg_pnl': round(float(net[1] or 0), 2),
+                'winners': int(net[2] or 0),
+                'win_rate': round(win_rate_net, 1),
+                'best_trade': round(float(net[3] or 0), 2),
+                'worst_trade': round(float(net[4] or 0), 2),
+                'total_spread_cost': round(float(net[5] or 0), 2)
+            },
+            # Legacy (mantener compatibilidad) - usa bruto
             'winners': int(t[3] or 0),
-            'win_rate': round(win_rate, 1),
+            'win_rate': round(win_rate_gross, 1),
             'total_pnl': round(float(t[1] or 0), 2),
             'avg_pnl': round(float(t[2] or 0), 2),
             'best_trade': round(float(t[4] or 0), 2),
             'worst_trade': round(float(t[5] or 0), 2)
+        },
+        'spread_config': {
+            'symbol': 'USTEC',
+            'spread_points': spread_info.get('spread_points', 90),
+            'source': spread_info.get('source', 'SpreadMonitor EA'),
+            'last_updated': spread_info.get('last_updated', 'N/A')
         },
         'open_position': pos
     })
@@ -504,21 +593,111 @@ def reset_db():
 @app.route('/health', methods=['GET'])
 def health():
     db_type = "PostgreSQL" if USE_POSTGRES else "SQLite"
-    return jsonify({'status': 'ok', 'service': 'bloop-tracker', 'database': db_type, 'version': 'v4'})
+    spread_info = SPREAD_CONFIG.get('USTEC', {})
+    return jsonify({
+        'status': 'ok', 
+        'service': 'bloop-tracker', 
+        'database': db_type, 
+        'version': 'v5',
+        'spread_config': {
+            'USTEC': spread_info.get('spread_points', 90)
+        }
+    })
+
+
+@app.route('/spread', methods=['GET', 'POST'])
+def spread_config():
+    """Ver o actualizar configuración de spread."""
+    if request.method == 'GET':
+        return jsonify(SPREAD_CONFIG)
+    
+    # POST: actualizar spread
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', 'USTEC')
+        spread = data.get('spread_points')
+        
+        if spread is not None:
+            if symbol not in SPREAD_CONFIG:
+                SPREAD_CONFIG[symbol] = {}
+            SPREAD_CONFIG[symbol]['spread_points'] = float(spread)
+            SPREAD_CONFIG[symbol]['last_updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            
+            return jsonify({
+                'status': 'ok',
+                'message': f'Spread for {symbol} updated to {spread} points',
+                'config': SPREAD_CONFIG[symbol]
+            })
+        else:
+            return jsonify({'status': 'error', 'message': 'spread_points required'}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/recalculate', methods=['POST'])
+def recalculate_pnl():
+    """Recalcular P&L neto de todos los trades con el spread actual."""
+    try:
+        conn = get_db_connection()
+        c = conn.cursor()
+        
+        # Obtener todos los trades
+        c.execute('SELECT id, symbol, pnl_points, entry_price FROM trades')
+        rows = c.fetchall()
+        
+        updated = 0
+        for row in rows:
+            trade_id, symbol, pnl_points, entry_price = row
+            if pnl_points is None:
+                continue
+                
+            spread = get_spread_for_symbol(symbol or 'USTEC')
+            pnl_net = pnl_points - spread
+            pnl_net_pct = (pnl_net / entry_price * 100) if entry_price else 0
+            
+            if USE_POSTGRES:
+                c.execute('''
+                    UPDATE trades 
+                    SET spread_cost = %s, pnl_net_points = %s, pnl_net_percent = %s
+                    WHERE id = %s
+                ''', (spread, pnl_net, pnl_net_pct, trade_id))
+            else:
+                c.execute('''
+                    UPDATE trades 
+                    SET spread_cost = ?, pnl_net_points = ?, pnl_net_percent = ?
+                    WHERE id = ?
+                ''', (spread, pnl_net, pnl_net_pct, trade_id))
+            updated += 1
+        
+        conn.commit()
+        conn.close()
+        
+        spread_used = get_spread_for_symbol('USTEC')
+        return jsonify({
+            'status': 'ok',
+            'trades_updated': updated,
+            'spread_used': spread_used,
+            'message': f'Recalculated {updated} trades with spread {spread_used} pts'
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/', methods=['GET'])
 def index():
-    return """
-    <h1>🎯 Bloop Tracker v4</h1>
-    <p>Con datos de optimización (ATR, TP, SL)</p>
+    spread = get_spread_for_symbol('USTEC')
+    return f"""
+    <h1>🎯 Bloop Tracker v5</h1>
+    <p>Con spread real de IC Markets ({spread} pts para USTEC)</p>
     <ul>
-        <li><a href="/stats">📊 Estadísticas</a></li>
+        <li><a href="/stats">📊 Estadísticas (Bruto vs Neto)</a></li>
         <li><a href="/trades">📈 Trades</a></li>
         <li><a href="/signals">📡 Señales</a></li>
         <li><a href="/position">🎯 Posición</a></li>
+        <li><a href="/spread">💰 Config Spread</a></li>
         <li><a href="/health">💚 Health</a></li>
     </ul>
+    <p><small>POST /recalculate para recalcular P&L con nuevo spread</small></p>
     """
 
 
@@ -526,6 +705,7 @@ def index():
 init_db()
 
 if __name__ == '__main__':
-    print("🎯 Bloop Tracker v4 - Con datos de optimización")
+    spread = get_spread_for_symbol('USTEC')
+    print(f"🎯 Bloop Tracker v5 - Con spread real ({spread} pts USTEC)")
     port = int(os.environ.get('PORT', 5555))
     app.run(host='0.0.0.0', port=port, debug=False)
