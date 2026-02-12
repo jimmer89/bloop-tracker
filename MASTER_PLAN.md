@@ -16,6 +16,12 @@
 │   (ahora)   │    │ Optimización│    │ Development │    │   Trading   │    │   Trading   │
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
     ≥300 trades        Edge claro       EA funcional      1-2 meses OK       Escalar
+        │                  │
+        │    ┌─────────────────────────────┐
+        └───▶│   TRACK PARALELO: CLON      │
+             │   Ingeniería inversa del    │
+             │   indicador en PineScript   │
+             └─────────────────────────────┘
 ```
 
 ---
