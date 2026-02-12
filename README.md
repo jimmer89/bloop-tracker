@@ -6,16 +6,16 @@ Webhook server para capturar señales del **Bloop Indicator** (TradingView) y ca
 
 **Producción (Railway):** https://web-production-62bc.up.railway.app
 
-### Backtest Results (2026-02-10)
+### Backtest Results (2026-02-12)
 
 | Métrica | Bruto | Neto (con spread) |
 |---------|-------|-------------------|
-| Total P&L | +148.1 pts | **-2551.9 pts** |
-| Win Rate | 50% | **10%** |
-| Winners | 15/30 | 3/30 |
-| P&L promedio | +4.9 pts | -85.1 pts |
+| Total P&L | +499.6 pts | **+428.5 pts** |
+| Win Rate | 49.4% | **46.8%** |
+| Winners | 39/79 | 37/79 |
+| P&L promedio | +6.32 pts | +5.42 pts |
 
-**⚠️ Conclusión:** La estrategia NO es viable con el spread actual de IC Markets (90 pts).
+**✅ Conclusión:** La estrategia ES RENTABLE con spread real de IC Markets (0.9 pts).
 
 ---
 
@@ -23,12 +23,14 @@ Webhook server para capturar señales del **Bloop Indicator** (TradingView) y ca
 
 Basado en monitoreo real con `SpreadMonitor_USTEC.mq5` (22 horas de datos):
 
-| Parámetro | Valor |
-|-----------|-------|
-| Spread mínimo | 90 pts (0.90 USD) |
-| Spread promedio | 97 pts |
-| Spread máximo | 220 pts (picos) |
+| Parámetro | Valor (escala precio) |
+|-----------|----------------------|
+| Spread mínimo | 0.9 pts |
+| Spread promedio | ~1.0 pts |
+| Spread máximo | 2.2 pts (picos) |
 | Mejor horario | 17:00-22:00 GMT+1 |
+
+**Nota:** IC Markets muestra "90 puntos" pero USTEC tiene 2 decimales, así que 90 puntos = 0.90 en escala del precio.
 
 **Fuente:** IC Markets, cuenta Standard, USTEC
 

@@ -19,7 +19,7 @@ app = Flask(__name__)
 # ============================================================
 SPREAD_CONFIG = {
     'USTEC': {
-        'spread_points': 90,      # Spread mínimo captado
+        'spread_points': 0.9,     # Spread en escala de precio (90 puntos broker = 0.9)
         'spread_avg': 97,         # Spread promedio
         'spread_max': 220,        # Spread máximo (picos de volatilidad)
         'best_hours': (17, 22),   # Horario con mejor spread (GMT+1)
