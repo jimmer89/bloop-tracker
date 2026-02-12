@@ -19,7 +19,7 @@
         │                  │
         │    ┌─────────────────────────────┐
         └───▶│   TRACK PARALELO: CLON      │
-             │   Ingeniería inversa del    │
+             │   Ingeniería inversa del    │◀──── 🟡 EN PROGRESO
              │   indicador en PineScript   │
              └─────────────────────────────┘
 ```
@@ -273,10 +273,61 @@ TradingView Alert ──▶ Webhook (Railway) ──▶ Signal File/API ──�
 
 ---
 
+---
+
+## 🔬 TRACK PARALELO: Clon del Indicador
+
+**Objetivo:** Clonar el indicador Bloop para no depender de suscripción de pago.
+
+**Estado:** 🟡 EN PROGRESO
+
+### Parámetros capturados del original
+
+| Parámetro | Valor |
+|-----------|-------|
+| SmoothRNG Sensitivity | 8 |
+| HTF Timeframe | 15 min |
+| HTF MA Type | HMA |
+| HTF MA Length | 20 |
+| ATR Length (Trailing) | 10 |
+| ATR Mult (Trailing) | 1.5 |
+| ATR Length (Targets) | 14 |
+| TP1/TP2 ATR Multiple | 2 / 4 |
+
+### Versiones
+
+| Versión | Estado | Problema |
+|---------|--------|----------|
+| v1 | ❌ Descartada | Demasiado sensible |
+| v2 | 🟡 En ajuste | Range Multiplier incorrecto |
+
+### Algoritmo usado (v2)
+
+- **DonovanWall's Range Filter** (Type 1)
+- Source: https://www.tradingview.com/script/lut7sBgG-Range-Filter-DW/
+- Default multiplier: 2.618 → **Probando 3.5+**
+
+### Próximos pasos
+
+1. Probar Range Multiplier: 4.0, 4.5, 5.0
+2. Comparar valores numéricos del Range Filter
+3. Si no converge: buscar otros algoritmos
+
+### Archivos
+
+| Archivo | Descripción |
+|---------|-------------|
+| `pinescript/BloopClone_v1.pine` | Primera versión (descartada) |
+| `pinescript/BloopClone_v2.pine` | Versión actual |
+| `pinescript/REVERSE_ENGINEERING.md` | Documentación detallada |
+
+---
+
 ## 📝 Changelog
 
 | Fecha | Cambio |
 |-------|--------|
+| 2026-02-12 | Ingeniería inversa iniciada, v2 del clon creada |
 | 2026-02-12 | Master Plan creado |
 | 2026-02-12 | Bug spread corregido (90→0.9), sistema ahora rentable |
 | 2026-02-10 | Análisis spread completado |

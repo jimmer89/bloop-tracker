@@ -1,0 +1,265 @@
+// This Pine Script™ is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+// © BloopClone v2 - Using DonovanWall's Range Filter algorithm
+
+//@version=5
+indicator("Bloop Clone v2", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ============================================================================
+// INPUTS - LOGIC CORE
+// ============================================================================
+group_core = "Logic • Core"
+smoothRngPeriod = input.int(8, "SmoothRNG Period", minval=1, group=group_core, tooltip="Period for Range Filter calculation")
+rngMultiplier = input.float(2.618, "Range Multiplier", minval=0.1, step=0.1, group=group_core)
+onlySignalWithTrend = input.bool(false, "Only Signal When HTF Trend Aligns", group=group_core)
+
+// ============================================================================
+// INPUTS - HTF TREND
+// ============================================================================
+group_htf = "Logic • HTF Trend"
+htfTimeframe = input.timeframe("15", "HTF Timeframe", group=group_htf)
+htfMaType = input.string("HMA", "HTF MA Type", options=["HMA", "EMA", "SMA", "WMA"], group=group_htf)
+htfMaLength = input.int(20, "HTF MA Length", minval=1, group=group_htf)
+
+// ============================================================================
+// INPUTS - ATR TRAILING STOP
+// ============================================================================
+group_trail = "Logic • ATR Trailing Stop"
+atrLengthTrail = input.int(10, "ATR Length (Trailing Stop)", minval=1, group=group_trail)
+atrMultTrail = input.float(1.5, "ATR Multiplier (Trailing Stop)", minval=0.1, step=0.1, group=group_trail)
+
+// ============================================================================
+// INPUTS - ATR TARGETS
+// ============================================================================
+group_targets = "Logic • ATR Targets (TP Levels)"
+atrLengthTargets = input.int(14, "ATR Length (Targets)", minval=1, group=group_targets)
+tp1Multiple = input.float(2.0, "TP1 ATR Multiple", minval=0.1, step=0.1, group=group_targets)
+tp2Multiple = input.float(4.0, "TP2 ATR Multiple", minval=0.1, step=0.1, group=group_targets)
+
+// ============================================================================
+// INPUTS - VISUALS
+// ============================================================================
+group_signals = "Style • Signals"
+showSignals = input.bool(true, "Show LONG/SHORT Signals", group=group_signals)
+longText = input.string("LONG", "Long Text", group=group_signals)
+shortText = input.string("SHORT", "Short Text", group=group_signals)
+longColor = input.color(color.green, "Long Color", group=group_signals)
+shortColor = input.color(color.red, "Short Color", group=group_signals)
+signalOffsetAtr = input.float(0.3, "Signal Offset (ATR x)", minval=0.1, step=0.1, group=group_signals)
+
+group_lines = "Style • Lines"
+showRangeFilter = input.bool(true, "Show Range Filter Line", group=group_lines)
+rangeBullColor = input.color(color.lime, "Range Bull Color", group=group_lines)
+rangeBearColor = input.color(color.red, "Range Bear Color", group=group_lines)
+rangeFilterWidth = input.int(2, "Range Filter Width", minval=1, group=group_lines)
+showHtfMa = input.bool(true, "Show HTF MA", group=group_lines)
+htfMaColor = input.color(color.orange, "HTF MA Color", group=group_lines)
+htfMaWidth = input.int(2, "HTF MA Width", minval=1, group=group_lines)
+showTrail = input.bool(true, "Show Trailing Stop", group=group_lines)
+trailBullColor = input.color(color.teal, "Trail Color (Price > Trail)", group=group_lines)
+trailBearColor = input.color(color.maroon, "Trail Color (Price < Trail)", group=group_lines)
+trailWidth = input.int(1, "Trail Width", minval=1, group=group_lines)
+
+// ============================================================================
+// FUNCTIONS
+// ============================================================================
+
+// Hull Moving Average
+hma(src, length) =>
+    wma1 = ta.wma(src, length / 2)
+    wma2 = ta.wma(src, length)
+    ta.wma(2 * wma1 - wma2, math.round(math.sqrt(length)))
+
+// Get MA based on type
+getMA(src, length, maType) =>
+    switch maType
+        "HMA" => hma(src, length)
+        "EMA" => ta.ema(src, length)
+        "SMA" => ta.sma(src, length)
+        "WMA" => ta.wma(src, length)
+        => ta.sma(src, length)
+
+// ============================================================================
+// RANGE FILTER - DonovanWall Algorithm (Simplified Type 1)
+// ============================================================================
+// This is the core algorithm from DonovanWall's Range Filter indicator
+// Source: https://www.tradingview.com/script/lut7sBgG-Range-Filter-DW/
+
+// Smooth Range Size calculation using Average Change method
+smoothRangeSize(src, period, mult) =>
+    // Calculate average change (EMA of absolute price change)
+    avgChange = ta.ema(math.abs(src - src[1]), period)
+    // Smooth it further with a longer EMA (wper = period * 2 - 1)
+    wper = period * 2 - 1
+    smoothedRange = ta.ema(avgChange, wper) * mult
+    smoothedRange
+
+// Range Filter Type 1 calculation
+rangeFilterDW(src, period, mult) =>
+    rng = smoothRangeSize(src, period, mult)
+    
+    var float rfilt = na
+    rfilt := nz(rfilt[1], src)
+    
+    // Type 1 filter logic: move filter when price exceeds range
+    if src > rfilt + rng
+        rfilt := src - rng
+    if src < rfilt - rng
+        rfilt := src + rng
+    
+    // Calculate bands
+    hiBand = rfilt + rng
+    loBand = rfilt - rng
+    
+    // Determine direction
+    var int fdir = 0
+    fdir := rfilt > rfilt[1] ? 1 : rfilt < rfilt[1] ? -1 : fdir
+    
+    [rfilt, hiBand, loBand, fdir]
+
+// Apply Range Filter
+[rangeFilterValue, hiBand, loBand, filterDir] = rangeFilterDW(close, smoothRngPeriod, rngMultiplier)
+
+// Determine trend from Range Filter
+rfBullish = filterDir == 1
+rfBearish = filterDir == -1
+
+// Color for range filter line
+rfColor = rfBullish ? rangeBullColor : rfBearish ? rangeBearColor : color.gray
+
+// ============================================================================
+// HTF TREND (HMA on higher timeframe)
+// ============================================================================
+htfMaValue = request.security(syminfo.tickerid, htfTimeframe, getMA(close, htfMaLength, htfMaType))
+htfTrendUp = close > htfMaValue
+htfTrendDown = close < htfMaValue
+
+// ============================================================================
+// ATR CALCULATIONS
+// ============================================================================
+atrTrail = ta.atr(atrLengthTrail)
+atrTargets = ta.atr(atrLengthTargets)
+
+// ============================================================================
+// TRAILING STOP
+// ============================================================================
+var float trailStop = na
+var bool isLong = false
+
+// Calculate trailing stop
+if rfBullish
+    newStop = close - (atrTrail * atrMultTrail)
+    trailStop := isLong ? math.max(nz(trailStop[1]), newStop) : newStop
+    isLong := true
+else if rfBearish
+    newStop = close + (atrTrail * atrMultTrail)
+    trailStop := not isLong ? math.min(nz(trailStop[1]), newStop) : newStop
+    isLong := false
+
+trailColor = close > trailStop ? trailBullColor : trailBearColor
+
+// ============================================================================
+// SIGNAL DETECTION
+// ============================================================================
+// Long signal: Range Filter direction changes to bullish
+// Short signal: Range Filter direction changes to bearish
+
+longSignal = filterDir == 1 and filterDir[1] != 1
+shortSignal = filterDir == -1 and filterDir[1] != -1
+
+// Apply HTF filter if enabled
+if onlySignalWithTrend
+    longSignal := longSignal and htfTrendUp
+    shortSignal := shortSignal and htfTrendDown
+
+// ============================================================================
+// ENTRY AND TARGET LEVELS
+// ============================================================================
+var float entryPrice = na
+var float tp1Price = na
+var float tp2Price = na
+var bool inLongTrade = false
+var bool inShortTrade = false
+
+if longSignal
+    entryPrice := close
+    tp1Price := close + (atrTargets * tp1Multiple)
+    tp2Price := close + (atrTargets * tp2Multiple)
+    inLongTrade := true
+    inShortTrade := false
+    
+if shortSignal
+    entryPrice := close
+    tp1Price := close - (atrTargets * tp1Multiple)
+    tp2Price := close - (atrTargets * tp2Multiple)
+    inLongTrade := false
+    inShortTrade := true
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Range Filter line
+plot(showRangeFilter ? rangeFilterValue : na, "Range Filter", color=rfColor, linewidth=rangeFilterWidth)
+
+// HTF MA line
+plot(showHtfMa ? htfMaValue : na, "HTF MA", color=htfMaColor, linewidth=htfMaWidth)
+
+// Trailing Stop
+plot(showTrail ? trailStop : na, "Trailing Stop", color=trailColor, linewidth=trailWidth, style=plot.style_linebr)
+
+// Entry and TP levels (horizontal lines)
+plot(inLongTrade ? entryPrice : na, "Long Entry", color=longColor, linewidth=1, style=plot.style_linebr)
+plot(inLongTrade ? tp1Price : na, "Long TP1", color=color.new(longColor, 30), linewidth=2, style=plot.style_linebr)
+plot(inLongTrade ? tp2Price : na, "Long TP2", color=color.new(longColor, 50), linewidth=1, style=plot.style_linebr)
+
+plot(inShortTrade ? entryPrice : na, "Short Entry", color=shortColor, linewidth=1, style=plot.style_linebr)
+plot(inShortTrade ? tp1Price : na, "Short TP1", color=color.new(shortColor, 30), linewidth=2, style=plot.style_linebr)
+plot(inShortTrade ? tp2Price : na, "Short TP2", color=color.new(shortColor, 50), linewidth=1, style=plot.style_linebr)
+
+// ============================================================================
+// SIGNALS (Labels)
+// ============================================================================
+signalOffset = atrTargets * signalOffsetAtr
+
+if showSignals and longSignal
+    label.new(bar_index, low - signalOffset, longText, 
+              color=longColor, textcolor=color.white, 
+              style=label.style_label_up, size=size.small)
+
+if showSignals and shortSignal
+    label.new(bar_index, high + signalOffset, shortText, 
+              color=shortColor, textcolor=color.white, 
+              style=label.style_label_down, size=size.small)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+alertcondition(longSignal, "Long Signal", "Bloop Clone: LONG signal detected")
+alertcondition(shortSignal, "Short Signal", "Bloop Clone: SHORT signal detected")
+
+// ============================================================================
+// TABLE (Dashboard)
+// ============================================================================
+var table dashboardTable = table.new(position.top_right, 2, 4, bgcolor=color.new(color.black, 80))
+
+if barstate.islast
+    // Header
+    table.cell(dashboardTable, 0, 0, "Bloop Clone v2", text_color=color.white, text_size=size.small)
+    table.cell(dashboardTable, 1, 0, "", text_color=color.white, text_size=size.small)
+    
+    // Range Filter status
+    rfStatus = rfBullish ? "BULLISH" : rfBearish ? "BEARISH" : "NEUTRAL"
+    rfStatusColor = rfBullish ? color.green : rfBearish ? color.red : color.gray
+    table.cell(dashboardTable, 0, 1, "Range Filter", text_color=color.gray, text_size=size.small)
+    table.cell(dashboardTable, 1, 1, rfStatus, text_color=rfStatusColor, text_size=size.small)
+    
+    // HTF Trend status
+    htfStatus = htfTrendUp ? "UPTREND" : "DOWNTREND"
+    htfStatusColor = htfTrendUp ? color.green : color.red
+    table.cell(dashboardTable, 0, 2, "HTF Trend (" + htfTimeframe + ")", text_color=color.gray, text_size=size.small)
+    table.cell(dashboardTable, 1, 2, htfStatus, text_color=htfStatusColor, text_size=size.small)
+    
+    // Current ATR
+    table.cell(dashboardTable, 0, 3, "ATR(" + str.tostring(atrLengthTargets) + ")", text_color=color.gray, text_size=size.small)
+    table.cell(dashboardTable, 1, 3, str.tostring(atrTargets, "#.##"), text_color=color.white, text_size=size.small)
