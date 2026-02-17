@@ -7,11 +7,30 @@ Incluye coste de spread en cálculos de P&L
 """
 
 from flask import Flask, request, jsonify
+from functools import wraps
 import json
 import os
 from datetime import datetime, timezone
 
 app = Flask(__name__)
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', '')
+
+
+def require_auth(f):
+    """Require WEBHOOK_SECRET in X-Webhook-Secret header for write endpoints."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not WEBHOOK_SECRET:
+            return jsonify({'status': 'error', 'message': 'WEBHOOK_SECRET not configured on server'}), 500
+        token = request.headers.get('X-Webhook-Secret', '')
+        if token != WEBHOOK_SECRET:
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 # ============================================================
 # CONFIGURACIÓN DE SPREAD (IC Markets USTEC)
@@ -348,6 +367,7 @@ def close_position(conn, exit_time, exit_price, exit_reason='signal'):
 
 
 @app.route('/webhook', methods=['POST'])
+@require_auth
 def webhook():
     """Recibir señales de TradingView."""
     try:
@@ -581,6 +601,7 @@ def get_position():
 
 
 @app.route('/reset', methods=['POST'])
+@require_auth
 def reset_db():
     conn = get_db_connection()
     c = conn.cursor()
@@ -612,7 +633,14 @@ def spread_config():
     """Ver o actualizar configuración de spread."""
     if request.method == 'GET':
         return jsonify(SPREAD_CONFIG)
-    
+
+    # POST: require auth for write operations
+    if not WEBHOOK_SECRET:
+        return jsonify({'status': 'error', 'message': 'WEBHOOK_SECRET not configured'}), 500
+    token = request.headers.get('X-Webhook-Secret', '')
+    if token != WEBHOOK_SECRET:
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+
     # POST: actualizar spread
     try:
         data = request.get_json()
@@ -637,6 +665,7 @@ def spread_config():
 
 
 @app.route('/recalculate', methods=['POST'])
+@require_auth
 def recalculate_pnl():
     """Recalcular P&L neto de todos los trades con el spread actual."""
     try:

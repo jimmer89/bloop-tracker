@@ -4,7 +4,7 @@ Webhook server para capturar señales del **Bloop Indicator** (TradingView) y ca
 
 ## 🚀 Estado Actual
 
-**Producción (Railway):** https://web-production-62bc.up.railway.app
+**Producción:** Deployed on Railway (URL in environment config)
 
 ### Backtest Results (2026-02-12)
 
@@ -86,8 +86,10 @@ Basado en monitoreo real con `SpreadMonitor_USTEC.mq5` (22 horas de datos):
 
 **Webhook URL:**
 ```
-https://web-production-62bc.up.railway.app/webhook
+${YOUR_RAILWAY_URL}/webhook
 ```
+
+**Important:** Add `X-Webhook-Secret` header with your `WEBHOOK_SECRET` value.
 
 **Alert Message:**
 ```json
@@ -114,15 +116,17 @@ https://web-production-62bc.up.railway.app/webhook
 
 ```bash
 # Ver configuración actual
-curl https://web-production-62bc.up.railway.app/spread
+curl $RAILWAY_URL/spread
 
 # Actualizar spread (ej: nuevo spread de 50 pts)
-curl -X POST https://web-production-62bc.up.railway.app/spread \
+curl -X POST $RAILWAY_URL/spread \
   -H "Content-Type: application/json" \
+  -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
   -d '{"symbol": "USTEC", "spread_points": 50}'
 
 # Recalcular todos los trades con nuevo spread
-curl -X POST https://web-production-62bc.up.railway.app/recalculate
+curl -X POST $RAILWAY_URL/recalculate \
+  -H "X-Webhook-Secret: $WEBHOOK_SECRET"
 ```
 
 ---
