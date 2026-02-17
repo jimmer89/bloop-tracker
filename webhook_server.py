@@ -470,10 +470,11 @@ def webhook():
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 
 @app.route('/signals', methods=['GET'])
+@require_auth
 def get_signals():
     conn = get_db_connection()
     c = conn.cursor()
@@ -491,6 +492,7 @@ def get_signals():
 
 
 @app.route('/trades', methods=['GET'])
+@require_auth
 def get_trades():
     conn = get_db_connection()
     c = conn.cursor()
@@ -603,6 +605,7 @@ def get_stats():
 
 
 @app.route('/position', methods=['GET'])
+@require_auth
 def get_position():
     conn = get_db_connection()
     pos = get_open_position(conn)
@@ -749,4 +752,4 @@ if __name__ == '__main__':
     spread = get_spread_for_symbol('USTEC')
     print(f"🎯 Bloop Tracker v5 - Con spread real ({spread} pts USTEC)")
     port = int(os.environ.get('PORT', 5555))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='127.0.0.1', port=port, debug=False)
