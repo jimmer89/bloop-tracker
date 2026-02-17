@@ -4,7 +4,7 @@ Webhook server para capturar señales del **Bloop Indicator** (TradingView) y ca
 
 ## 🚀 Estado Actual
 
-**Producción:** Deployed on Railway (URL in environment config)
+**Producción:** https://bloop.jimmer89.xyz (Hetzner VPS, migrado desde Railway 2026-02-17)
 
 ### Backtest Results (2026-02-12)
 
@@ -42,9 +42,9 @@ Basado en monitoreo real con `SpreadMonitor_USTEC.mq5` (22 horas de datos):
 |----------|--------|-------------|
 | `/webhook` | POST | Recibe señales de TradingView |
 | `/stats` | GET | Estadísticas (bruto vs neto) |
-| `/trades` | GET | Historial de trades con P&L neto |
-| `/signals` | GET | Señales raw |
-| `/position` | GET | Posición abierta actual |
+| `/trades` | GET | Historial de trades con P&L neto (auth required) |
+| `/signals` | GET | Señales raw (auth required) |
+| `/position` | GET | Posición abierta actual (auth required) |
 | `/spread` | GET/POST | Ver/actualizar config de spread |
 | `/recalculate` | POST | Recalcular P&L neto histórico |
 | `/reset` | POST | Resetear todos los datos |
@@ -86,10 +86,10 @@ Basado en monitoreo real con `SpreadMonitor_USTEC.mq5` (22 horas de datos):
 
 **Webhook URL:**
 ```
-${YOUR_RAILWAY_URL}/webhook
+https://bloop.jimmer89.xyz/webhook
 ```
 
-**Important:** Add `X-Webhook-Secret` header with your `WEBHOOK_SECRET` value.
+**Important:** Include `secret` field in JSON body (TradingView can't send custom headers).
 
 **Alert Message:**
 ```json
@@ -116,16 +116,16 @@ ${YOUR_RAILWAY_URL}/webhook
 
 ```bash
 # Ver configuración actual
-curl $RAILWAY_URL/spread
+curl https://bloop.jimmer89.xyz/spread
 
 # Actualizar spread (ej: nuevo spread de 50 pts)
-curl -X POST $RAILWAY_URL/spread \
+curl -X POST https://bloop.jimmer89.xyz/spread \
   -H "Content-Type: application/json" \
   -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
   -d '{"symbol": "USTEC", "spread_points": 50}'
 
 # Recalcular todos los trades con nuevo spread
-curl -X POST $RAILWAY_URL/recalculate \
+curl -X POST https://bloop.jimmer89.xyz/recalculate \
   -H "X-Webhook-Secret: $WEBHOOK_SECRET"
 ```
 
@@ -175,14 +175,15 @@ curl -X POST $RAILWAY_URL/recalculate \
 ## 🛠️ Stack
 
 - **Backend:** Flask + Gunicorn
-- **Database:** PostgreSQL (Railway)
-- **Hosting:** Railway (auto-deploy desde GitHub)
+- **Database:** PostgreSQL (Hetzner VPS)
+- **Hosting:** Hetzner VPS (jimmer89.xyz) — systemd + gunicorn + nginx
 - **Monitoreo spread:** MQL5 EA en MT5
 
 ---
 
 ## 📝 Changelog
 
+- **v5.1** (2026-02-17): Migración a Hetzner VPS (jimmer89.xyz), auth en endpoints de lectura, hardening seguridad
 - **v5** (2026-02-10): Spread real de IC Markets, P&L bruto vs neto, /recalculate
 - **v4** (2026-02-07): Datos de optimización (ATR, TP, SL)
 - **v3** (2026-02-06): Migración a PostgreSQL, deploy en Railway

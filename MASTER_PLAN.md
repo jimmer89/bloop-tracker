@@ -31,7 +31,7 @@
 **Objetivo:** Acumular suficientes trades para análisis estadístico significativo.
 
 **Estado:** 🟢 EN PROGRESO
-- Webhook activo en Railway 24/7
+- Webhook activo en Hetzner VPS (bloop.jimmer89.xyz) 24/7
 - 79 trades capturados (2026-02-12)
 - P&L neto actual: +428.5 pts
 
@@ -118,7 +118,7 @@
 ### Arquitectura
 
 ```
-TradingView Alert ──▶ Webhook (Railway) ──▶ Signal File/API ──▶ EA MT5
+TradingView Alert ──▶ Webhook (Hetzner VPS) ──▶ Signal File/API ──▶ EA MT5
                                                                    │
                                                                    ▼
                                                             Ejecutar orden
@@ -267,7 +267,7 @@ TradingView Alert ──▶ Webhook (Railway) ──▶ Signal File/API ──�
 | Recurso | Ubicación |
 |---------|-----------|
 | Webhook server | `bloop-tracker/webhook_server.py` |
-| Datos en vivo | https://web-production-62bc.up.railway.app/stats |
+| Datos en vivo | https://bloop.jimmer89.xyz/stats |
 | Análisis spread | `edge-research/analysis/USTEC_spread_analysis_2026-02-10.md` |
 | SpreadMonitor EA | `mql5/SpreadMonitor_USTEC.mq5` |
 
