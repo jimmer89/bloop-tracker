@@ -367,9 +367,12 @@ def close_position(conn, exit_time, exit_price, exit_reason='signal'):
 
 
 @app.route('/webhook', methods=['POST'])
-@require_auth
 def webhook():
-    """Recibir señales de TradingView."""
+    """Recibir señales de TradingView.
+    
+    Auth: Accepts secret in JSON body (for TradingView compatibility)
+    since TradingView webhooks can't send custom headers.
+    """
     try:
         if request.is_json:
             data = request.get_json()
@@ -378,6 +381,13 @@ def webhook():
                 data = json.loads(request.data.decode('utf-8'))
             except:
                 data = {'raw': request.data.decode('utf-8')}
+        
+        # Validate secret from body (TradingView can't send headers)
+        if not WEBHOOK_SECRET:
+            return jsonify({'status': 'error', 'message': 'WEBHOOK_SECRET not configured on server'}), 500
+        body_secret = data.get('secret', '')
+        if body_secret != WEBHOOK_SECRET:
+            return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
         
         signal = data.get('signal', 'UNKNOWN').upper()
         price = float(data.get('price', 0))
