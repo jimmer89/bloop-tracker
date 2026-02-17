@@ -479,7 +479,7 @@ def get_signals():
     c = conn.cursor()
     c.execute('''SELECT id, timestamp, signal, price, symbol, timeframe, 
                         atr, tp1, tp2, sl, high, low
-                 FROM signals ORDER BY timestamp DESC LIMIT 100''')
+                 FROM signals ORDER BY timestamp DESC LIMIT 10000''')
     rows = c.fetchall()
     conn.close()
     
@@ -500,7 +500,7 @@ def get_trades():
                         pnl_points, pnl_percent, 
                         spread_cost, pnl_net_points, pnl_net_percent,
                         duration_seconds, max_price, min_price
-                 FROM trades ORDER BY exit_time DESC LIMIT 100''')
+                 FROM trades ORDER BY exit_time DESC LIMIT 10000''')
     rows = c.fetchall()
     conn.close()
     
