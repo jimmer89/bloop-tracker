@@ -1,0 +1,13 @@
+// DEPRECATED: Pine Script v6 has issues with alertcondition/if in TW editor.
+// Use price_updater.py daemon on VPS instead (polls Yahoo Finance every 60s).
+// Kept for reference only.
+//
+// //@version=6
+// indicator("Bloop Price Updater", overlay = false)
+// plot(bar_index % 2, "Trigger")
+//
+// Alert config (if it ever works):
+//   Condition: Bloop Price Updater > Trigger, Crossing 0.5
+//   Trigger: Once per bar close
+//   Webhook: <your-server-url>/webhook
+//   Message: {"signal": "PRICE_UPDATE", "price": {{close}}, "symbol": "USTEC", "secret": "..."}
